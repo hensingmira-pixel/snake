@@ -14,13 +14,20 @@ const bufCanvas = document.createElement('canvas');
 bufCanvas.width = WIDTH;
 bufCanvas.height = HEIGHT;
 const bctx = bufCanvas.getContext('2d');
-let head = { x: WIDTH/2, y: HEIGHT/2 };
-let angle = 0; // radians
-let speed = 160; // pixels per second
 let angularSpeed = Math.PI; // rad/s when turning
-let snakeLength = 160; // pixels
-let path = [ {x: head.x, y: head.y} ]; // array of points from head -> tail
-let pathLen = 0; // total length of path
+// support multiple snakes (for splitting)
+let snakes = [];
+
+function makeInitialSnake(){
+  return {
+    head: { x: WIDTH/2, y: HEIGHT/2 },
+    angle: 0,
+    speed: 160,
+    length: 160,
+    path: [ { x: WIDTH/2, y: HEIGHT/2 } ],
+    pathLen: 0
+  };
+}
 let score = 0;
 let food = null;
 let running = false;
@@ -31,12 +38,7 @@ let turningRight = false;
 let shroomEffect = { active: false, start: 0, duration: 9000 };
 
 function resetGame(){
-  head = { x: WIDTH/2, y: HEIGHT/2 };
-  angle = 0;
-  speed = 160;
-  snakeLength = 160;
-  path = [ {x: head.x, y: head.y} ];
-  pathLen = 0;
+  snakes = [ makeInitialSnake() ];
   score = 0;
   spawnFood();
   updateScore();
@@ -46,9 +48,10 @@ function spawnFood(){
   const margin = 20;
   function randX(){ return margin + Math.random()*(WIDTH-2*margin); }
   function randY(){ return margin + Math.random()*(HEIGHT-2*margin); }
-  // 15% chance to spawn a shroom (special food)
-  const isShroom = Math.random() < 0.15;
-  food = { x: randX(), y: randY(), type: isShroom ? 'shroom' : 'food' };
+  // spawn types: scissors (7%), shroom (15%), food otherwise
+  const r = Math.random();
+  const type = r < 0.07 ? 'scissors' : (r < 0.22 ? 'shroom' : 'food');
+  food = { x: randX(), y: randY(), type };
 }
 
 function updateScore(){
@@ -78,69 +81,113 @@ function toroidalDistance(a,b){
 }
 
 function step(dt){
-  // turn
-  if(turningLeft) angle -= angularSpeed * dt;
-  if(turningRight) angle += angularSpeed * dt;
+  // update each snake independently; controls apply to all heads simultaneously
+  for(let si=0; si<snakes.length; si++){
+    const s = snakes[si];
+    if(turningLeft) s.angle -= angularSpeed * dt;
+    if(turningRight) s.angle += angularSpeed * dt;
+    // move head (unwrapped coordinates)
+    s.head.x += Math.cos(s.angle) * s.speed * dt;
+    s.head.y += Math.sin(s.angle) * s.speed * dt;
 
-  // move head (unwrapped coordinates)
-  head.x += Math.cos(angle) * speed * dt;
-  head.y += Math.sin(angle) * speed * dt;
+    // add to path
+    const prev = s.path[0];
+    const seg = { x: s.head.x, y: s.head.y };
+    const added = distance(seg, prev);
+    s.path.unshift(seg);
+    s.pathLen += added;
 
-  // add to path
-  const prev = path[0];
-  const seg = { x: head.x, y: head.y };
-  const added = distance(seg, prev);
-  path.unshift(seg);
-  pathLen += added;
+    // trim tail to keep pathLen <= s.length
+    while(s.pathLen > s.length && s.path.length > 1){
+      const a = s.path[s.path.length-2];
+      const b = s.path[s.path.length-1];
+      const d = distance(a,b);
+      if(s.pathLen - d >= s.length){
+        s.path.pop();
+        s.pathLen -= d;
+      } else {
+        const keep = s.length - (s.pathLen - d);
+        const t = keep / d;
+        b.x = a.x + (b.x - a.x) * t;
+        b.y = a.y + (b.y - a.y) * t;
+        s.pathLen = s.length;
+        break;
+      }
+    }
 
-  // trim tail to keep pathLen <= snakeLength
-  while(pathLen > snakeLength && path.length > 1){
-    const a = path[path.length-2];
-    const b = path[path.length-1];
+    // check food for this head
+    if(food && toroidalDistance(s.head, food) < 14){
+      if(food.type === 'shroom'){
+        shroomEffect.active = true;
+        shroomEffect.start = Date.now();
+        shroomEffect.duration = 9000; // ms
+        score += 2;
+        s.length += 24;
+        s.speed = Math.min(320, s.speed + 10);
+      } else if(food.type === 'scissors'){
+        // scissors: split this snake into two
+        splitSnake(si);
+      } else {
+        score += 1;
+        s.length += 36;
+        s.speed = Math.min(320, s.speed + 6);
+      }
+      spawnFood();
+      updateScore();
+    }
+  }
+
+  // collision: check each head against all snakes' bodies
+  for(let si=0; si<snakes.length; si++){
+    const s = snakes[si];
+    for(let sj=0; sj<snakes.length; sj++){
+      const other = snakes[sj];
+      const startI = (si === sj) ? 10 : 0;
+      for(let i=startI; i<other.path.length; i++){
+        const p = other.path[i];
+        if(toroidalDistance(s.head, p) < 8){ stop(); return; }
+      }
+    }
+  }
+}
+
+function pathTotalLength(path){
+  let L = 0; for(let i=0;i<path.length-1;i++) L += distance(path[i], path[i+1]); return L;
+}
+
+function splitSnake(index){
+  const s = snakes[index];
+  const total = s.length;
+  if(s.path.length < 6) return; // too short to split
+  const target = total / 2;
+  // walk path to find midpoint position
+  let acc = 0; let midIdx = 0; let midT = 0;
+  for(let i=0;i<s.path.length-1;i++){
+    const a = s.path[i]; const b = s.path[i+1];
     const d = distance(a,b);
-    if(pathLen - d >= snakeLength){
-      path.pop();
-      pathLen -= d;
-    } else {
-      // shorten last segment
-      const keep = snakeLength - (pathLen - d);
-      const t = keep / d;
-      b.x = a.x + (b.x - a.x) * t;
-      b.y = a.y + (b.y - a.y) * t;
-      pathLen = snakeLength;
-      break;
+    if(acc + d >= target){
+      midIdx = i; midT = (target - acc) / d; break;
     }
+    acc += d;
   }
-
-  // check food using toroidal distance
-  if(food && toroidalDistance(head, food) < 14){
-    if(food.type === 'shroom'){
-      // shroom: trigger RGB flowing overlay, give small growth + score
-      shroomEffect.active = true;
-      shroomEffect.start = Date.now();
-      shroomEffect.duration = 9000; // ms
-      score += 2;
-      snakeLength += 24;
-      // small speed boost
-      speed = Math.min(320, speed + 10);
-    } else {
-      // normal food
-      score += 1;
-      snakeLength += 36; // grow
-      speed = Math.min(320, speed + 6); // slight speed up
-    }
-    spawnFood();
-    updateScore();
-  }
-
-  // self collision: check toroidal distance to older points
-  for(let i=10;i<path.length;i++){
-    const p = path[i];
-    if(toroidalDistance(head, p) < 8){
-      stop();
-      return;
-    }
-  }
+  const a = s.path[midIdx]; const b = s.path[midIdx+1];
+  const midPoint = { x: a.x + (b.x - a.x) * midT, y: a.y + (b.y - a.y) * midT };
+  // assemble two path arrays
+  const pathA = s.path.slice(0, midIdx+1);
+  pathA[pathA.length-1] = midPoint;
+  const pathB = s.path.slice(midIdx+1);
+  pathB.unshift(midPoint);
+  // compute lengths
+  const lenA = Math.max(40, Math.floor(s.length/2));
+  const lenB = Math.max(40, s.length - lenA);
+  const sA = {
+    head: { x: pathA[0].x, y: pathA[0].y }, angle: s.angle, speed: s.speed, length: lenA, path: pathA, pathLen: pathTotalLength(pathA)
+  };
+  const sB = {
+    head: { x: pathB[0].x, y: pathB[0].y }, angle: s.angle, speed: s.speed, length: lenB, path: pathB, pathLen: pathTotalLength(pathB)
+  };
+  // replace original with two new snakes
+  snakes.splice(index, 1, sA, sB);
 }
 
 function draw(){
@@ -164,6 +211,16 @@ function draw(){
       bctx.beginPath(); bctx.arc(fx+3, fy-7, 1.5, 0, Math.PI*2); bctx.fill();
       bctx.fillStyle = '#ffffff';
       bctx.fillRect(fx-3, fy-3, 6, 8);
+    } else if(food.type === 'scissors'){
+      // simple scissors glyph: two blades crossing
+      bctx.save();
+      bctx.translate(fx, fy);
+      bctx.rotate(Math.PI/6);
+      bctx.strokeStyle = '#ffffff';
+      bctx.lineWidth = 3;
+      bctx.beginPath(); bctx.moveTo(-10,-8); bctx.lineTo(12,10); bctx.stroke();
+      bctx.beginPath(); bctx.moveTo(-10,8); bctx.lineTo(12,-10); bctx.stroke();
+      bctx.restore();
     } else {
       bctx.fillStyle = '#ff6b6b';
       bctx.beginPath();
@@ -173,24 +230,28 @@ function draw(){
   }
 
   // snake body (map points to buffer coordinates)
-  for(let i=0;i<path.length;i++){
-    const p = path[i];
-    const px = mod(p.x, WIDTH);
-    const py = mod(p.y, HEIGHT);
-    const t = i / path.length;
-    const size = 8 * (1 - t) + 3; // head bigger
-    bctx.fillStyle = i%4<2
-     ? '#ff9bbcff' : '#995b5bff';
+  // snake bodies (support multiple snakes)
+  const palettes = [ ['#4ee1a0','#2bd08a'], ['#ffd36b','#ffb86b'], ['#9bb0ff','#5b8eff'], ['#ff9bbc','#ff6b9b'] ];
+  for(let si=0; si<snakes.length; si++){
+    const s = snakes[si];
+    const pal = palettes[si % palettes.length];
+    for(let i=0;i<s.path.length;i++){
+      const p = s.path[i];
+      const px = mod(p.x, WIDTH);
+      const py = mod(p.y, HEIGHT);
+      const t = i / s.path.length;
+      const size = 8 * (1 - t) + 3; // head bigger
+      bctx.fillStyle = (i===0) ? pal[0] : pal[1];
+      bctx.beginPath();
+      bctx.arc(px, py, size, 0, Math.PI*2);
+      bctx.fill();
+    }
+    // head highlight
+    bctx.fillStyle = '#0b1f13';
     bctx.beginPath();
-    bctx.arc(px, py, size, 0, Math.PI*2);
+    bctx.arc(mod(s.head.x, WIDTH), mod(s.head.y, HEIGHT), 3, 0, Math.PI*2);
     bctx.fill();
   }
-
-  // head highlight (mapped)
-  bctx.fillStyle = '#0b1f13';
-  bctx.beginPath();
-  bctx.arc(mod(head.x, WIDTH), mod(head.y, HEIGHT), 3, 0, Math.PI*2);
-  bctx.fill();
 
   // shroom overlay effect (intensified RGB flows) - render into buffer
   if(shroomEffect.active){
@@ -278,8 +339,8 @@ window.addEventListener('keydown', e => {
   if(key === 'ArrowLeft' || key === 'ArrowRight' || key === ' ' || key === 'Spacebar' || key === 'Space') e.preventDefault();
   if(key === 'ArrowLeft') turningLeft = true;
   if(key === 'ArrowRight') turningRight = true;
-  if(key === 'ArrowUp') { speed = Math.min(400, speed + 20); }
-  if(key === 'ArrowDown') { speed = Math.max(30, speed - 20); }
+  if(key === 'ArrowUp') { for(const s of snakes) s.speed = Math.min(400, s.speed + 20); }
+  if(key === 'ArrowDown') { for(const s of snakes) s.speed = Math.max(30, s.speed - 20); }
   if(key === ' ') { running = !running; pauseBtn.textContent = running ? 'Pause' : 'Resume'; }
 }, {capture:true});
 
@@ -294,8 +355,11 @@ canvas.addEventListener('touchend', e => {
   const rect = canvas.getBoundingClientRect();
   const tx = t.clientX - rect.left;
   const ty = t.clientY - rect.top;
-  const dx = tx - head.x, dy = ty - head.y;
-  angle = Math.atan2(dy, dx);
+  // set target angle for all snakes towards tap
+  for(const s of snakes){
+    const dx = tx - s.head.x, dy = ty - s.head.y;
+    s.angle = Math.atan2(dy, dx);
+  }
   canvas.focus();
 });
 
@@ -321,12 +385,12 @@ if(joystickEl){
     const nx = (dist > 0) ? (dx / dist) * Math.min(dist, max) : 0;
     const ny = (dist > 0) ? (dy / dist) * Math.min(dist, max) : 0;
     knob.style.transform = `translate(${nx}px, ${ny}px)`;
-    // direct-angle control from joystick
-    angle = Math.atan2(dy, dx);
-    // map ratio to speed (gently allow faster movement when pushing joystick out)
+    // direct-angle control from joystick: apply to all snakes
+    const ang = Math.atan2(dy, dx);
     const minSpeed = 60;
     const maxSpeed = 360;
-    speed = Math.max(minSpeed, Math.min(maxSpeed, minSpeed + ratio * (maxSpeed - minSpeed)));
+    const sp = Math.max(minSpeed, Math.min(maxSpeed, minSpeed + ratio * (maxSpeed - minSpeed)));
+    for(const s of snakes){ s.angle = ang; s.speed = sp; }
     try{ canvas.focus(); }catch(e){}
   }
 
