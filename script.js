@@ -53,20 +53,29 @@ function distance(a,b){
   const dx = a.x-b.x, dy = a.y-b.y; return Math.hypot(dx,dy);
 }
 
+function mod(a,m){ return ((a % m) + m) % m; }
+
+function toroidalDelta(a,b,m){
+  // minimal delta from b to a on a ring of length m
+  let d = a - b;
+  d = ((d + m/2) % m + m) % m - m/2;
+  return d;
+}
+
+function toroidalDistance(a,b){
+  const dx = toroidalDelta(a.x, b.x, WIDTH);
+  const dy = toroidalDelta(a.y, b.y, HEIGHT);
+  return Math.hypot(dx,dy);
+}
+
 function step(dt){
   // turn
   if(turningLeft) angle -= angularSpeed * dt;
   if(turningRight) angle += angularSpeed * dt;
 
-  // move head
+  // move head (unwrapped coordinates)
   head.x += Math.cos(angle) * speed * dt;
   head.y += Math.sin(angle) * speed * dt;
-
-  // wrap
-  if(head.x < 0) head.x += WIDTH;
-  if(head.x >= WIDTH) head.x -= WIDTH;
-  if(head.y < 0) head.y += HEIGHT;
-  if(head.y >= HEIGHT) head.y -= HEIGHT;
 
   // add to path
   const prev = path[0];
@@ -94,8 +103,8 @@ function step(dt){
     }
   }
 
-  // check food
-  if(food && distance(head, food) < 14){
+  // check food using toroidal distance
+  if(food && toroidalDistance(head, food) < 14){
     score += 1;
     snakeLength += 36; // grow
     speed = Math.min(320, speed + 6); // slight speed up
@@ -103,16 +112,13 @@ function step(dt){
     updateScore();
   }
 
-  // self collision: if head is too close to any path point after some offset
-  const safeOffset = 20; // avoid immediate collision with nearby head path
-  let acc = 0;
-  for(let i=0;i<path.length-10;i++){
-    const p = path[i+10]; // skip recent points
-    if(distance(head,p) < 8){
+  // self collision: check toroidal distance to older points
+  for(let i=10;i<path.length;i++){
+    const p = path[i];
+    if(toroidalDistance(head, p) < 8){
       stop();
       return;
     }
-    acc++;
   }
 }
 
@@ -122,29 +128,33 @@ function draw(){
   ctx.fillStyle = '#071428';
   ctx.fillRect(0,0,WIDTH,HEIGHT);
 
-  // food
+  // food (map to canvas)
   if(food){
+    const fx = mod(food.x, WIDTH);
+    const fy = mod(food.y, HEIGHT);
     ctx.fillStyle = '#ff6b6b';
     ctx.beginPath();
-    ctx.arc(food.x, food.y, 8, 0, Math.PI*2);
+    ctx.arc(fx, fy, 8, 0, Math.PI*2);
     ctx.fill();
   }
 
-  // snake body
+  // snake body (map points to canvas coordinates)
   for(let i=0;i<path.length;i++){
     const p = path[i];
+    const px = mod(p.x, WIDTH);
+    const py = mod(p.y, HEIGHT);
     const t = i / path.length;
     const size = 8 * (1 - t) + 3; // head bigger
     ctx.fillStyle = i===0 ? '#4ee1a0' : '#2bd08a';
     ctx.beginPath();
-    ctx.arc(p.x, p.y, size, 0, Math.PI*2);
+    ctx.arc(px, py, size, 0, Math.PI*2);
     ctx.fill();
   }
 
-  // head highlight
+  // head highlight (mapped)
   ctx.fillStyle = '#0b1f13';
   ctx.beginPath();
-  ctx.arc(head.x, head.y, 3, 0, Math.PI*2);
+  ctx.arc(mod(head.x, WIDTH), mod(head.y, HEIGHT), 3, 0, Math.PI*2);
   ctx.fill();
 }
 
