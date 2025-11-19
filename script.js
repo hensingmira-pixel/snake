@@ -299,6 +299,60 @@ canvas.addEventListener('touchend', e => {
   canvas.focus();
 });
 
+// Mobile joystick handling (on-screen joystick for touch devices)
+const joystickEl = document.getElementById('joystick');
+if(joystickEl){
+  const knob = joystickEl.querySelector('.joystick-knob');
+  let joyActive = false;
+  let joyPointerId = null;
+  let joyCenter = {x:0,y:0};
+  function resetKnob(){
+    knob.style.transition = 'transform 0.12s ease';
+    knob.style.transform = 'translate(0,0)';
+    setTimeout(()=> knob.style.transition = 'transform 0.06s linear', 140);
+  }
+
+  function handleJoyMove(clientX, clientY){
+    const dx = clientX - joyCenter.x;
+    const dy = clientY - joyCenter.y;
+    const dist = Math.hypot(dx, dy);
+    const max = joystickEl.clientWidth * 0.38; // knob travel radius
+    const ratio = Math.min(1, dist / max);
+    const nx = (dist > 0) ? (dx / dist) * Math.min(dist, max) : 0;
+    const ny = (dist > 0) ? (dy / dist) * Math.min(dist, max) : 0;
+    knob.style.transform = `translate(${nx}px, ${ny}px)`;
+    // direct-angle control from joystick
+    angle = Math.atan2(dy, dx);
+    // map ratio to speed (gently allow faster movement when pushing joystick out)
+    const minSpeed = 60;
+    const maxSpeed = 360;
+    speed = Math.max(minSpeed, Math.min(maxSpeed, minSpeed + ratio * (maxSpeed - minSpeed)));
+    try{ canvas.focus(); }catch(e){}
+  }
+
+  joystickEl.addEventListener('pointerdown', e => {
+    joystickEl.setPointerCapture(e.pointerId);
+    joyActive = true; joyPointerId = e.pointerId;
+    const r = joystickEl.getBoundingClientRect();
+    joyCenter = { x: r.left + r.width/2, y: r.top + r.height/2 };
+    handleJoyMove(e.clientX, e.clientY);
+  });
+
+  joystickEl.addEventListener('pointermove', e => {
+    if(!joyActive || e.pointerId !== joyPointerId) return;
+    handleJoyMove(e.clientX, e.clientY);
+  });
+
+  function endJoy(e){
+    if(e && e.pointerId !== joyPointerId) return;
+    if(e) joystickEl.releasePointerCapture(e.pointerId);
+    joyActive = false; joyPointerId = null;
+    resetKnob();
+  }
+  joystickEl.addEventListener('pointerup', endJoy);
+  joystickEl.addEventListener('pointercancel', endJoy);
+}
+
 startBtn.addEventListener('click', ()=>{ start(); startBtn.blur(); });
 pauseBtn.addEventListener('click', ()=>{ running = !running; pauseBtn.textContent = running ? 'Pause' : 'Resume'; });
 resetBtn.addEventListener('click', ()=>{ resetGame(); start(); });

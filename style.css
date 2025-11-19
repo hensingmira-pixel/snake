@@ -23,3 +23,25 @@ footer{margin-top:10px;color:#8b98a6}
   .overlay{flex-direction:row;margin-left:0;margin-top:8px}
   canvas{width:100%;height:auto}
 }
+
+/* Joystick styles for mobile */
+.joystick{
+  position:fixed;
+  left:18px;
+  bottom:18px;
+  width:120px;
+  height:120px;
+  display:none; /* shown on touch/small screens */
+  z-index:60;
+  touch-action:none;
+}
+.joystick-bg{
+  width:100%;height:100%;border-radius:999px;background:rgba(6,10,18,0.45);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.03)
+}
+.joystick-knob{
+  width:44px;height:44px;border-radius:999px;background:linear-gradient(180deg,#5ef1b0,#2bd08a);box-shadow:0 8px 18px rgba(8,20,12,0.6);transform:translate(0,0);transition:transform 0.06s linear
+}
+
+@media (max-width:900px), (pointer:coarse){
+  .joystick{display:block}
+}

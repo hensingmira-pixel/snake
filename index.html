@@ -18,6 +18,12 @@
 
       <main>
         <canvas id="gameCanvas" width="600" height="400"></canvas>
+        <!-- Mobile joystick (visible on small / touch devices) -->
+        <div id="joystick" class="joystick" aria-hidden="true">
+          <div class="joystick-bg">
+            <div class="joystick-knob"></div>
+          </div>
+        </div>
         <div class="overlay">
           <button id="startBtn">Start</button>
           <button id="pauseBtn">Pause</button>
