@@ -36,6 +36,11 @@ let turningLeft = false;
 let turningRight = false;
 // shroom effect state
 let shroomEffect = { active: false, start: 0, duration: 9000 };
+// periodic scissors spawn: one appears every 30s and lasts 10s
+let scissors = null;
+let nextScissorsAt = Date.now() + 30000;
+const SCISSORS_INTERVAL = 30000; // ms
+const SCISSORS_DURATION = 10000; // ms
 
 function resetGame(){
   snakes = [ makeInitialSnake() ];
@@ -48,9 +53,9 @@ function spawnFood(){
   const margin = 20;
   function randX(){ return margin + Math.random()*(WIDTH-2*margin); }
   function randY(){ return margin + Math.random()*(HEIGHT-2*margin); }
-  // spawn types: scissors (7%), shroom (15%), food otherwise
+  // spawn types: shroom (15%), food otherwise. Scissors are spawned periodically.
   const r = Math.random();
-  const type = r < 0.07 ? 'scissors' : (r < 0.22 ? 'shroom' : 'food');
+  const type = r < 0.15 ? 'shroom' : 'food';
   food = { x: randX(), y: randY(), type };
 }
 
@@ -81,6 +86,16 @@ function toroidalDistance(a,b){
 }
 
 function step(dt){
+  // scissors spawn lifecycle: spawn periodically and expire after duration
+  const nowT = Date.now();
+  if(!scissors && nowT >= nextScissorsAt){
+    // spawn scissors
+    const margin = 20;
+    scissors = { x: margin + Math.random()*(WIDTH-2*margin), y: margin + Math.random()*(HEIGHT-2*margin), expires: nowT + SCISSORS_DURATION };
+    nextScissorsAt = nowT + SCISSORS_INTERVAL;
+  }
+  if(scissors && nowT > scissors.expires){ scissors = null; }
+
   // update each snake independently; controls apply to all heads simultaneously
   for(let si=0; si<snakes.length; si++){
     const s = snakes[si];
@@ -119,6 +134,17 @@ function step(dt){
       }
     }
 
+    // check scissors first (periodic special)
+    if(scissors && toroidalDistance(s.head, scissors) < 14){
+      // eating scissors splits this snake
+      splitSnake(si);
+      // remove the scissors and schedule next spawn
+      scissors = null;
+      nextScissorsAt = Date.now() + SCISSORS_INTERVAL;
+      spawnFood();
+      updateScore();
+    }
+
     // check food for this head
     if(food && toroidalDistance(s.head, food) < 14){
       if(food.type === 'shroom'){
@@ -129,7 +155,7 @@ function step(dt){
         s.length += 24;
         s.speed = Math.min(320, s.speed + 10);
       } else if(food.type === 'scissors'){
-        // scissors: split this snake into two
+        // legacy: treat like scissors if it ever appears here (shouldn't)
         splitSnake(si);
       } else {
         score += 1;
@@ -248,22 +274,26 @@ function draw(){
       bctx.beginPath(); bctx.arc(fx+3, fy-7, 1.5, 0, Math.PI*2); bctx.fill();
       bctx.fillStyle = '#ffffff';
       bctx.fillRect(fx-3, fy-3, 6, 8);
-    } else if(food.type === 'scissors'){
-      // simple scissors glyph: two blades crossing
-      bctx.save();
-      bctx.translate(fx, fy);
-      bctx.rotate(Math.PI/6);
-      bctx.strokeStyle = '#ffffff';
-      bctx.lineWidth = 3;
-      bctx.beginPath(); bctx.moveTo(-10,-8); bctx.lineTo(12,10); bctx.stroke();
-      bctx.beginPath(); bctx.moveTo(-10,8); bctx.lineTo(12,-10); bctx.stroke();
-      bctx.restore();
     } else {
       bctx.fillStyle = '#ff6b6b';
       bctx.beginPath();
       bctx.arc(fx, fy, 8, 0, Math.PI*2);
       bctx.fill();
     }
+  }
+
+  // draw scheduled scissors if present
+  if(scissors){
+    const sx = mod(scissors.x, WIDTH);
+    const sy = mod(scissors.y, HEIGHT);
+    bctx.save();
+    bctx.translate(sx, sy);
+    bctx.rotate(Math.PI/6);
+    bctx.strokeStyle = '#ffffff';
+    bctx.lineWidth = 3;
+    bctx.beginPath(); bctx.moveTo(-10,-8); bctx.lineTo(12,10); bctx.stroke();
+    bctx.beginPath(); bctx.moveTo(-10,8); bctx.lineTo(12,-10); bctx.stroke();
+    bctx.restore();
   }
 
   // snake body (map points to buffer coordinates)
