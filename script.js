@@ -9,6 +9,11 @@ const resetBtn = document.getElementById('resetBtn');
 // continuous movement settings
 const WIDTH = canvas.width;
 const HEIGHT = canvas.height;
+// offscreen buffer for post-processing/distortion
+const bufCanvas = document.createElement('canvas');
+bufCanvas.width = WIDTH;
+bufCanvas.height = HEIGHT;
+const bctx = bufCanvas.getContext('2d');
 let head = { x: WIDTH/2, y: HEIGHT/2 };
 let angle = 0; // radians
 let speed = 160; // pixels per second
@@ -23,7 +28,7 @@ let lastTime = null;
 let turningLeft = false;
 let turningRight = false;
 // shroom effect state
-let shroomEffect = { active: false, start: 0, duration: 6000 };
+let shroomEffect = { active: false, start: 0, duration: 9000 };
 
 function resetGame(){
   head = { x: WIDTH/2, y: HEIGHT/2 };
@@ -113,7 +118,7 @@ function step(dt){
       // shroom: trigger RGB flowing overlay, give small growth + score
       shroomEffect.active = true;
       shroomEffect.start = Date.now();
-      shroomEffect.duration = 6000; // ms
+      shroomEffect.duration = 9000; // ms
       score += 2;
       snakeLength += 24;
       // small speed boost
@@ -139,84 +144,101 @@ function step(dt){
 }
 
 function draw(){
-  ctx.clearRect(0,0,WIDTH,HEIGHT);
+  // render the scene into the offscreen buffer first
+  bctx.clearRect(0,0,WIDTH,HEIGHT);
   // background
-  ctx.fillStyle = '#071428';
-  ctx.fillRect(0,0,WIDTH,HEIGHT);
+  bctx.fillStyle = '#071428';
+  bctx.fillRect(0,0,WIDTH,HEIGHT);
 
-  // food (map to canvas)
+  // food (map to buffer)
   if(food){
     const fx = mod(food.x, WIDTH);
     const fy = mod(food.y, HEIGHT);
     if(food.type === 'shroom'){
-      // draw a simple shroom: purple cap + white stem
-      // cap
-      ctx.beginPath();
-      ctx.fillStyle = '#9b59b6';
-      ctx.arc(fx, fy-3, 10, Math.PI, 0);
-      ctx.fill();
-      // spots
-      ctx.fillStyle = '#ffd9ff';
-      ctx.beginPath(); ctx.arc(fx-4, fy-6, 2, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(fx+3, fy-7, 1.5, 0, Math.PI*2); ctx.fill();
-      // stem
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(fx-3, fy-3, 6, 8);
+      bctx.beginPath();
+      bctx.fillStyle = '#9b59b6';
+      bctx.arc(fx, fy-3, 10, Math.PI, 0);
+      bctx.fill();
+      bctx.fillStyle = '#ffd9ff';
+      bctx.beginPath(); bctx.arc(fx-4, fy-6, 2, 0, Math.PI*2); bctx.fill();
+      bctx.beginPath(); bctx.arc(fx+3, fy-7, 1.5, 0, Math.PI*2); bctx.fill();
+      bctx.fillStyle = '#ffffff';
+      bctx.fillRect(fx-3, fy-3, 6, 8);
     } else {
-      ctx.fillStyle = '#ff6b6b';
-      ctx.beginPath();
-      ctx.arc(fx, fy, 8, 0, Math.PI*2);
-      ctx.fill();
+      bctx.fillStyle = '#ff6b6b';
+      bctx.beginPath();
+      bctx.arc(fx, fy, 8, 0, Math.PI*2);
+      bctx.fill();
     }
   }
 
-  // snake body (map points to canvas coordinates)
+  // snake body (map points to buffer coordinates)
   for(let i=0;i<path.length;i++){
     const p = path[i];
     const px = mod(p.x, WIDTH);
     const py = mod(p.y, HEIGHT);
     const t = i / path.length;
     const size = 8 * (1 - t) + 3; // head bigger
-    ctx.fillStyle = i===0 ? '#4ee1a0' : '#2bd08a';
-    ctx.beginPath();
-    ctx.arc(px, py, size, 0, Math.PI*2);
-    ctx.fill();
+    bctx.fillStyle = i%4<2
+     ? '#ff9bbcff' : '#995b5bff';
+    bctx.beginPath();
+    bctx.arc(px, py, size, 0, Math.PI*2);
+    bctx.fill();
   }
 
   // head highlight (mapped)
-  ctx.fillStyle = '#0b1f13';
-  ctx.beginPath();
-  ctx.arc(mod(head.x, WIDTH), mod(head.y, HEIGHT), 3, 0, Math.PI*2);
-  ctx.fill();
+  bctx.fillStyle = '#0b1f13';
+  bctx.beginPath();
+  bctx.arc(mod(head.x, WIDTH), mod(head.y, HEIGHT), 3, 0, Math.PI*2);
+  bctx.fill();
 
-  // shroom overlay effect (subtle RGB flows)
+  // shroom overlay effect (intensified RGB flows) - render into buffer
   if(shroomEffect.active){
     const now = Date.now();
     const elapsed = now - shroomEffect.start;
     const t = Math.max(0, Math.min(1, elapsed / shroomEffect.duration));
-    // fade out at the end
-    const globalAlpha = 0.16 * (1 - t); // max 0.16, fades to 0
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    // draw three moving soft blobs (red, green, blue)
-    const colors = ['rgba(255,80,80,', 'rgba(80,255,120,', 'rgba(80,160,255,'];
-    const baseSpeed = 30; // px/s
+    const alphaPeak = 0.38; // stronger peak
+    const globalAlpha = alphaPeak * (1 - t) * (0.7 + 0.3*Math.sin(now/400));
+    bctx.save();
+    bctx.globalCompositeOperation = 'screen';
+    bctx.filter = 'blur(10px)';
+    const colors = ['rgba(255,0,0,', 'rgba(0,255,0,', 'rgba(0,0,255,'];
     for(let i=0;i<3;i++){
-      const phase = (now/1000) * (0.2 + i*0.1) + i*2.1;
-      const x = (Math.sin(phase*0.9 + i) * 0.5 + 0.5) * WIDTH;
-      const y = (Math.cos(phase*0.7 + i*1.3) * 0.5 + 0.5) * HEIGHT;
-      const radius = 160 + 80*Math.sin(phase + i);
-      // draw radial gradient circle with low alpha
-      const grad = ctx.createRadialGradient(x,y,0,x,y,radius);
-      grad.addColorStop(0, colors[i] + (globalAlpha*0.85) + ')');
+      const phase = (now/1000) * (0.8 + i*0.25) + i*1.9;
+      const x = (Math.sin(phase*1.1 + i*0.3) * 0.5 + 0.5) * WIDTH;
+      const y = (Math.cos(phase*0.9 + i*0.7) * 0.5 + 0.5) * HEIGHT;
+      const radius = 420 + 120*Math.sin(phase + i);
+      const grad = bctx.createRadialGradient(x,y,0,x,y,radius);
+      grad.addColorStop(0, colors[i] + (Math.max(0, globalAlpha*0.95)) + ')');
+      grad.addColorStop(0.6, colors[i] + (Math.max(0, globalAlpha*0.45)) + ')');
       grad.addColorStop(1, colors[i] + '0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(x,y,radius,0,Math.PI*2);
-      ctx.fill();
+      bctx.fillStyle = grad;
+      bctx.beginPath();
+      bctx.arc(x,y,radius,0,Math.PI*2);
+      bctx.fill();
     }
-    ctx.restore();
+    bctx.filter = 'none';
+    bctx.restore();
     if(elapsed >= shroomEffect.duration) shroomEffect.active = false;
+  }
+
+  // copy buffer to main canvas — apply distortion if active
+  if(shroomEffect.active){
+    const now = Date.now();
+    const elapsed = now - shroomEffect.start;
+    const tt = Math.max(0, Math.min(1, elapsed / shroomEffect.duration));
+    const amp = 8 + 48 * (1 - tt); // stronger at start, eases
+    const waveSpeed = 220;
+    ctx.clearRect(0,0,WIDTH,HEIGHT);
+    const sliceH = 6; // height of each horizontal slice
+    for(let y=0;y<HEIGHT;y+=sliceH){
+      const norm = y / HEIGHT;
+      const dx = Math.sin(norm * Math.PI * 2 + now / waveSpeed) * amp * Math.sin(now/900 + norm*6);
+      ctx.drawImage(bufCanvas, 0, y, WIDTH, sliceH, dx, y, WIDTH, sliceH);
+    }
+  } else {
+    ctx.clearRect(0,0,WIDTH,HEIGHT);
+    ctx.drawImage(bufCanvas, 0, 0);
   }
 }
 
