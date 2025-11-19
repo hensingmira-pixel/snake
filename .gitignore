@@ -1,0 +1,12 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Node modules
+node_modules/
+
+# VSCode
+.vscode/
+
+# OS files
+.DS_Store
