@@ -298,7 +298,7 @@ function draw(){
 
   // snake body (map points to buffer coordinates)
   // snake bodies (support multiple snakes)
-  const palettes = [ ['#4ee1a0','#2bd08a'], ['#ffd36b','#ffb86b'], ['#9bb0ff','#5b8eff'], ['#ff9bbc','#ff6b9b'] ];
+  const palettes = [ ['#ffccccff','#704646ff'], ['#beffb0ff','#496643ff'], ['#acbcf7ff','#455f97ff'], ['#ff9bbc','#ff6b9b'] ];
   for(let si=0; si<snakes.length; si++){
     const s = snakes[si];
     const pal = palettes[si % palettes.length];
@@ -308,7 +308,7 @@ function draw(){
       const py = mod(p.y, HEIGHT);
       const t = i / s.path.length;
       const size = 8 * (1 - t) + 3; // head bigger
-      bctx.fillStyle = (i===0) ? pal[0] : pal[1];
+      bctx.fillStyle = (i%4<2) ? pal[0] : pal[1];
       bctx.beginPath();
       bctx.arc(px, py, size, 0, Math.PI*2);
       bctx.fill();
