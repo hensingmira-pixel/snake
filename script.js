@@ -84,8 +84,12 @@ function step(dt){
   // update each snake independently; controls apply to all heads simultaneously
   for(let si=0; si<snakes.length; si++){
     const s = snakes[si];
+    const now = Date.now();
+    const paused = s.pauseUntil && now < s.pauseUntil;
     if(turningLeft) s.angle -= angularSpeed * dt;
     if(turningRight) s.angle += angularSpeed * dt;
+    if(paused) continue; // skip movement and food checks while paused
+
     // move head (unwrapped coordinates)
     s.head.x += Math.cos(s.angle) * s.speed * dt;
     s.head.y += Math.sin(s.angle) * s.speed * dt;
@@ -213,6 +217,8 @@ function splitSnake(index){
   const sB = {
     head: { x: pathB[0].x, y: pathB[0].y }, angle: s.angle, speed: s.speed, length: lenB, path: pathB, pathLen: pathTotalLength(pathB)
   };
+  // pause the second/new snake briefly so it doesn't immediately eat the original
+  sB.pauseUntil = Date.now() + 1000; // milliseconds
   // replace original with two new snakes
   snakes.splice(index, 1, sA, sB);
 }
