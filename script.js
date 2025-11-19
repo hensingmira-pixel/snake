@@ -22,6 +22,8 @@ let running = false;
 let lastTime = null;
 let turningLeft = false;
 let turningRight = false;
+// shroom effect state
+let shroomEffect = { active: false, start: 0, duration: 6000 };
 
 function resetGame(){
   head = { x: WIDTH/2, y: HEIGHT/2 };
@@ -39,7 +41,9 @@ function spawnFood(){
   const margin = 20;
   function randX(){ return margin + Math.random()*(WIDTH-2*margin); }
   function randY(){ return margin + Math.random()*(HEIGHT-2*margin); }
-  food = { x: randX(), y: randY() };
+  // 15% chance to spawn a shroom (special food)
+  const isShroom = Math.random() < 0.15;
+  food = { x: randX(), y: randY(), type: isShroom ? 'shroom' : 'food' };
 }
 
 function updateScore(){
@@ -105,9 +109,21 @@ function step(dt){
 
   // check food using toroidal distance
   if(food && toroidalDistance(head, food) < 14){
-    score += 1;
-    snakeLength += 36; // grow
-    speed = Math.min(320, speed + 6); // slight speed up
+    if(food.type === 'shroom'){
+      // shroom: trigger RGB flowing overlay, give small growth + score
+      shroomEffect.active = true;
+      shroomEffect.start = Date.now();
+      shroomEffect.duration = 6000; // ms
+      score += 2;
+      snakeLength += 24;
+      // small speed boost
+      speed = Math.min(320, speed + 10);
+    } else {
+      // normal food
+      score += 1;
+      snakeLength += 36; // grow
+      speed = Math.min(320, speed + 6); // slight speed up
+    }
     spawnFood();
     updateScore();
   }
@@ -132,10 +148,26 @@ function draw(){
   if(food){
     const fx = mod(food.x, WIDTH);
     const fy = mod(food.y, HEIGHT);
-    ctx.fillStyle = '#ff6b6b';
-    ctx.beginPath();
-    ctx.arc(fx, fy, 8, 0, Math.PI*2);
-    ctx.fill();
+    if(food.type === 'shroom'){
+      // draw a simple shroom: purple cap + white stem
+      // cap
+      ctx.beginPath();
+      ctx.fillStyle = '#9b59b6';
+      ctx.arc(fx, fy-3, 10, Math.PI, 0);
+      ctx.fill();
+      // spots
+      ctx.fillStyle = '#ffd9ff';
+      ctx.beginPath(); ctx.arc(fx-4, fy-6, 2, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(fx+3, fy-7, 1.5, 0, Math.PI*2); ctx.fill();
+      // stem
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(fx-3, fy-3, 6, 8);
+    } else {
+      ctx.fillStyle = '#ff6b6b';
+      ctx.beginPath();
+      ctx.arc(fx, fy, 8, 0, Math.PI*2);
+      ctx.fill();
+    }
   }
 
   // snake body (map points to canvas coordinates)
@@ -156,6 +188,36 @@ function draw(){
   ctx.beginPath();
   ctx.arc(mod(head.x, WIDTH), mod(head.y, HEIGHT), 3, 0, Math.PI*2);
   ctx.fill();
+
+  // shroom overlay effect (subtle RGB flows)
+  if(shroomEffect.active){
+    const now = Date.now();
+    const elapsed = now - shroomEffect.start;
+    const t = Math.max(0, Math.min(1, elapsed / shroomEffect.duration));
+    // fade out at the end
+    const globalAlpha = 0.16 * (1 - t); // max 0.16, fades to 0
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // draw three moving soft blobs (red, green, blue)
+    const colors = ['rgba(255,80,80,', 'rgba(80,255,120,', 'rgba(80,160,255,'];
+    const baseSpeed = 30; // px/s
+    for(let i=0;i<3;i++){
+      const phase = (now/1000) * (0.2 + i*0.1) + i*2.1;
+      const x = (Math.sin(phase*0.9 + i) * 0.5 + 0.5) * WIDTH;
+      const y = (Math.cos(phase*0.7 + i*1.3) * 0.5 + 0.5) * HEIGHT;
+      const radius = 160 + 80*Math.sin(phase + i);
+      // draw radial gradient circle with low alpha
+      const grad = ctx.createRadialGradient(x,y,0,x,y,radius);
+      grad.addColorStop(0, colors[i] + (globalAlpha*0.85) + ')');
+      grad.addColorStop(1, colors[i] + '0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x,y,radius,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+    if(elapsed >= shroomEffect.duration) shroomEffect.active = false;
+  }
 }
 
 function loop(now){
