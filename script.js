@@ -38,9 +38,9 @@ let turningRight = false;
 let shroomEffect = { active: false, start: 0, duration: 9000 };
 // periodic scissors spawn: one appears every 30s and lasts 10s
 let scissors = null;
-let nextScissorsAt = Date.now() + 30000;
-const SCISSORS_INTERVAL = 30000; // ms
-const SCISSORS_DURATION = 10000; // ms
+let nextScissorsAt = Date.now() + 10000;
+const SCISSORS_INTERVAL = 10000; // ms
+const SCISSORS_DURATION = 5000; // ms
 
 function resetGame(){
   snakes = [ makeInitialSnake() ];
