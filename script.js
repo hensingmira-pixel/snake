@@ -144,6 +144,8 @@ function step(dt){
   // collision: check each head against all snakes' bodies
   // collision: heads can bite other snakes (remove bitten snakes)
   const toRemove = new Set();
+  const now = Date.now();
+  const paused = snakes.map(s => s.pauseUntil && now < s.pauseUntil);
   for(let si=0; si<snakes.length; si++){
     const s = snakes[si];
     // self-collision: head with own body (skip first few points)
@@ -151,6 +153,8 @@ function step(dt){
       const p = s.path[i];
       if(toroidalDistance(s.head, p) < 8){ stop(); return; }
     }
+    // if this head is paused, it should not be able to bite others
+    if(paused[si]) continue;
     // check against other snakes
     for(let sj=0; sj<snakes.length; sj++){
       if(si === sj) continue;
