@@ -140,11 +140,21 @@ function loop(now=0){
 // input
 window.addEventListener('keydown', e => {
   const key = e.key;
+  const target = e.target;
+  const tag = target && target.tagName;
+  // don't intercept keys when typing in inputs or editable areas
+  if(tag === 'INPUT' || tag === 'TEXTAREA' || (target && target.isContentEditable)) return;
+
+  // prevent page scrolling for arrow keys and space
+  if((key && key.startsWith && key.startsWith('Arrow')) || key === ' ' || key === 'Spacebar' || key === 'Space'){
+    e.preventDefault();
+  }
+
   if(key==='ArrowUp' || key==='w' || key==='W') trySetDir(0,-1);
   if(key==='ArrowDown' || key==='s' || key==='S') trySetDir(0,1);
   if(key==='ArrowLeft' || key==='a' || key==='A') trySetDir(-1,0);
   if(key==='ArrowRight' || key==='d' || key==='D') trySetDir(1,0);
-  if(key===' '){ // space to pause/resume
+  if(key===' ' || key === 'Spacebar' || key === 'Space'){ // space to pause/resume
     if(running) { running=false; pauseBtn.textContent='Resume'; }
     else { running=true; pauseBtn.textContent='Pause'; }
   }
