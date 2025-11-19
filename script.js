@@ -138,16 +138,43 @@ function step(dt){
   }
 
   // collision: check each head against all snakes' bodies
+  // collision: heads can bite other snakes (remove bitten snakes)
+  const toRemove = new Set();
   for(let si=0; si<snakes.length; si++){
     const s = snakes[si];
+    // self-collision: head with own body (skip first few points)
+    for(let i=10;i<s.path.length;i++){
+      const p = s.path[i];
+      if(toroidalDistance(s.head, p) < 8){ stop(); return; }
+    }
+    // check against other snakes
     for(let sj=0; sj<snakes.length; sj++){
+      if(si === sj) continue;
       const other = snakes[sj];
-      const startI = (si === sj) ? 10 : 0;
-      for(let i=startI; i<other.path.length; i++){
+      for(let i=0; i<other.path.length; i++){
         const p = other.path[i];
-        if(toroidalDistance(s.head, p) < 8){ stop(); return; }
+        if(toroidalDistance(s.head, p) < 8){
+          // head-to-head (i===0) -> shorter snake gets eaten; equal => both
+          if(i === 0){
+            if(s.length > other.length){ toRemove.add(sj); score += 5; }
+            else if(s.length < other.length){ toRemove.add(si); score += 5; }
+            else { toRemove.add(si); toRemove.add(sj); }
+          } else {
+            // s bites other's body -> other gets eaten
+            toRemove.add(sj);
+            score += Math.max(2, Math.floor(other.length/20));
+          }
+          break; // stop scanning this other snake
+        }
       }
     }
+  }
+
+  if(toRemove.size > 0){
+    // filter out removed snakes
+    snakes = snakes.filter((_, idx) => !toRemove.has(idx));
+    if(snakes.length === 0){ stop(); return; }
+    updateScore();
   }
 }
 
