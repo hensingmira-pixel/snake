@@ -114,6 +114,7 @@ function drawTile(x,y,r=0){
 function start(){
   if(running) return;
   running = true;
+  try{ canvas.focus(); } catch(e) {}
   loop();
 }
 
@@ -137,6 +138,11 @@ function loop(now=0){
   }
 }
 
+// make canvas focusable and focus on interaction
+canvas.tabIndex = 0;
+canvas.style.outline = 'none';
+canvas.addEventListener('pointerdown', () => canvas.focus());
+
 // input
 window.addEventListener('keydown', e => {
   const key = e.key;
@@ -158,7 +164,7 @@ window.addEventListener('keydown', e => {
     if(running) { running=false; pauseBtn.textContent='Resume'; }
     else { running=true; pauseBtn.textContent='Pause'; }
   }
-});
+}, {capture: true});
 
 function trySetDir(x,y){
   // prevent reversing
